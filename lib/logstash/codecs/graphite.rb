@@ -25,6 +25,8 @@ class LogStash::Codecs::Graphite < LogStash::Codecs::Base
 
   # Indicate that the event @fields should be treated as metrics and will be sent as is to graphite
   config :fields_are_metrics, :validate => :boolean, :default => false
+  config :values_are_hash, :validate => :boolean, :default => false
+  config :include_submetrics, :validate => :array, :default => [ ".*" ]
 
   # Include only regex matched metric names
   config :include_metrics, :validate => :array, :default => [ ".*" ]
@@ -75,9 +77,16 @@ class LogStash::Codecs::Graphite < LogStash::Codecs::Base
       @logger.debug("got metrics event", :metrics => event.to_hash)
       event.to_hash.each do |metric,value|
         next if EXCLUDE_ALWAYS.include?(metric)
-        next unless @include_metrics.empty? || @include_metrics.any? { |regexp| metric.match(regexp) }
+        next unless @include_metrics.any? { |regexp| metric.match(regexp) }
         next if @exclude_metrics.any? {|regexp| metric.match(regexp)}
-        messages << "#{construct_metric_name(metric)} #{event.sprintf(value.to_s).to_f} #{timestamp}"
+        if @values_are_hash
+          value.to_hash.each do |value_name,v|
+            next unless @include_submetrics.empty? || @include_submetrics.any? { |regexp| value_name.match(regexp) }
+            messages << "#{construct_metric_name(metric)} #{event.sprintf(value_name.to_s)}=#{event.sprintf(v.to_s).to_f} #{timestamp}"
+          end # values_name_to
+        else
+          messages << "#{construct_metric_name(metric)} #{event.sprintf(value.to_s).to_f} #{timestamp}"
+        end # if @values_are_metrics
       end # data.to_hash.each
     else
       @metrics.each do |metric, value|
